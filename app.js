@@ -1,8 +1,12 @@
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
+const axios = require('axios')
+const NodeCache = require('node-cache')
 const app = express();
+const API_URL = 'https://jsonplaceholder.typicode.com/users';
 const PORT = process.env.PORT || 3000;
+let cache = new NodeCache();
 
 const options = {
   definition: {
@@ -86,6 +90,21 @@ app.get('/items', (req, res) => {
   res.json({ items: [] });
 });
 
+app.get('/api/users', async (req, res) => {
+  const cachedUsers = cache.get('users');
+  if (cachedUsers) {
+    return res.json(cachedUsers);
+  } else {
+    try {
+      const response = await axios.get(API_URL);
+      const users = response.data;
+      cache.mset(users);
+      return res.json(users);
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to fetch users' });
+    }
+  }
+});
 /**
  * @swagger
  *
@@ -155,6 +174,18 @@ app.post('/items', (req, res) => {
   res.status(201).json({ item: req.body });
 });
 
+app.post('/api/cache/size', (req, res) => {
+  const newSize= req.body.size;
+  if (newSize && Number.isInteger(newSize) && newSize > 0) {
+    cache.close();
+    
+    cache = new NodeCache({ maxKeys: newSize })
+    cache.options.maxKeys = newSize;
+    return res.json({ message: `Cache size set to ${newSize}` });
+  } else {
+    return res.status(400).json({ message: 'Invalid cache size' });
+  }
+});
 /**
  * @swagger
  *
@@ -218,6 +249,11 @@ app.put('/items/:id', (req, res) => {
  */
 app.delete('/items/:id', (req, res) => {
   res.status(204).end();
+});
+
+app.delete('/api/cache', (req, res) => {
+  cache.flushAll();
+  return res.json({ message: 'Cache cleared' });
 });
 
 app.listen(PORT, () => {
